@@ -10,19 +10,27 @@ const (
 	DIR  = 0775
 )
 
-func CreateDir(d string) error {
-	_, err := os.Stat(d)
+func (p *Project) CreateDir() error {
+	path := fmt.Sprintf("%s/src/%s/%s", p.gopath, p.repo, p.name)
+	_, err := os.Stat(path)
 	if os.IsNotExist(err) {
-		fmt.Printf("creating project at %s\n", d)
-		return os.Mkdir(d, os.FileMode(DIR))
+		fmt.Printf("creating project at %s\n", path)
+		return os.MkdirAll(path, os.FileMode(DIR))
 	}
 	return fmt.Errorf("directory already exists")
 }
 
-func CreateFile(d, n string) error {
-	f, err := os.OpenFile(fmt.Sprintf("%s/%s", d, n), os.O_RDONLY|os.O_CREATE, os.FileMode(FILE))
+func (p *Project) CreateFile(n, content string) error {
+	path := fmt.Sprintf("%s/src/%s/%s", p.gopath, p.repo, p.name)
+	f, err := os.OpenFile(fmt.Sprintf("%s/%s", path, n), os.O_RDWR|os.O_CREATE, os.FileMode(FILE))
 	if err != nil {
 		return err
+	}
+	if content != "" {
+		_, err := f.WriteString(content)
+		if err != nil {
+			return err
+		}
 	}
 	return f.Close()
 }

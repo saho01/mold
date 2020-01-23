@@ -1,0 +1,93 @@
+# Starter pipeline
+# Start with a minimal pipeline that you can customize to build and deploy your code.
+# Add steps that build, run tests, deploy, and more:
+# https://aka.ms/yaml
+name: $(TeamProject)_$(BuildDefinitionName)_$(SourceBranchName)_$(Date:yyyyMMdd)$(Rev:.rr)
+pr: none
+trigger:
+  branches:
+    include:
+      - '*'
+  tags:
+    include:
+      - v*
+variables:
+  GOBIN:  '$(GOPATH)/bin' # Go binaries path
+  GOPATH: '$(system.defaultWorkingDirectory)/gopath' # Go workspace path
+  modulePath: '$(GOPATH)/src/{{.Repo}}/$(build.repository.name)' # Path to the module's code
+  LOCAL_TAG: $(build.repository.name)/$(build.sourceversion)
+
+stages:
+  - stage: Testing
+    displayName: 'Testing'
+    condition: ne(variables['Build.SourceBranch'], 'refs/heads/master')
+    jobs:
+    - job: Test
+      displayName: 'Build env, test and lint'
+      pool:
+        name: 'Default'
+      variables:
+        - group: token-group
+      steps:
+      - checkout: self
+        clean: false
+      - script: |
+          mkdir -p '$(GOBIN)'
+          mkdir -p '$(GOPATH)/pkg'
+          mkdir -p '$(modulePath)'
+          shopt -s extglob
+          cp -R !(gopath) '$(modulePath)'
+          echo '##vso[task.prependpath]$(GOBIN)'
+          echo '##vso[task.prependpath]/home/seth.aho/go/bin/go1.13.4'
+        displayName: 'Set up the Go workspace'
+
+      - script: GO111MODULE=auto GOPRIVATE=private.git.repo/* go1.13.4 get -insecure -v -t -d ./...
+        workingDirectory: '$(modulePath)'
+        displayName: 'go get dependencies'
+
+      - script: golint -set_exit_status ./cmd/... ./pkg/...
+        workingDirectory: '$(modulePath)'
+        displayName: 'Lint'
+
+      - script: go1.13.4 test -short -v $(go list ./... | grep -v /vendor/)
+        workingDirectory: '$(modulePath)'
+        displayName: 'Test'
+
+  - stage: Package
+    displayName: 'Create Package'
+    condition: startsWith(variables['Build.SourceBranch'], 'refs/tags/')
+    jobs:
+    - job: Build
+      displayName: 'Build Package'
+      pool:
+        name: 'Default'
+      steps:
+      - checkout: self
+        clean: false
+      - script: |
+          mkdir -p '$(GOBIN)'
+          mkdir -p '$(GOPATH)/pkg'
+          mkdir -p '$(modulePath)'
+          shopt -s extglob
+          cp -R !(gopath) '$(modulePath)'
+          echo '##vso[task.prependpath]$(GOBIN)'
+          echo '##vso[task.prependpath]/home/seth.aho/go/bin/go1.13.4'
+        displayName: 'Set up the Go workspace'
+
+      - script: GO111MODULE=auto GOPRIVATE=private.git.repo/* go1.13.4 get -insecure -v -t -d ./...
+        workingDirectory: '$(modulePath)'
+        displayName: 'go get dependencies'
+
+      - script: |
+          export VERSION=$(git describe --tags | grep -oE '[0-9]*\.[0-9]*\.[0-9]*')
+          echo $VERSION
+          sed -i "s|<<VERSION>>|${VERSION}|g" $(modulePath)/debian/changelog
+          env GOPATH=$(GOPATH) make -C $(modulePath) deb
+          cp -R $(modulePath)/dist/amd64 $(Build.ArtifactStagingDirectory)
+        displayName: 'Create package'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish package to artifacts'
+        inputs:
+          pathtoPublish: '$(Build.ArtifactStagingDirectory)'
+          artifactName: 'govas'

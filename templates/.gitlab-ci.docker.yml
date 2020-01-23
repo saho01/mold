@@ -1,0 +1,72 @@
+cache:
+  untracked: true
+variables:
+  LOCAL_TAG:                $CI_PROJECT_NAME:$CI_COMMIT_SHA
+  REMOTE_TAG:               $CI_REGISTRY/$CI_PROJECT_PATH/$CI_COMMIT_REF_SLUG
+  GIT_SSL_NO_VERIFY:        '1'
+
+stages:
+  - build
+  - push
+  - deploy
+
+build:
+  stage:                    build
+  tags:
+    - shell
+  script:
+    docker build -t $LOCAL_TAG -f Dockerfile .
+
+push-branch:
+  stage:                    push
+  retry:                    2
+  tags:
+    - shell
+  before_script:
+    - docker login -u <<USER>> -p <<PASSWORD>> $CI_REGISTRY
+  script:
+    - export VERSION=$(git describe --tags | grep -oE 'v[0-9]*\.[0-9]*\.[0-9]*-?[0-9]*');
+    - docker tag $LOCAL_TAG $CI_REGISTRY/$CI_PROJECT_PATH/$CI_COMMIT_REF_SLUG:latest
+    - docker push $CI_REGISTRY/$CI_PROJECT_PATH/$CI_COMMIT_REF_SLUG:latest
+    - docker tag $LOCAL_TAG $CI_REGISTRY/$CI_PROJECT_PATH/$CI_COMMIT_REF_SLUG:${VERSION:-latest}
+    - docker push $CI_REGISTRY/$CI_PROJECT_PATH/$CI_COMMIT_REF_SLUG:${VERSION:-latest}
+  only:
+    - branches
+
+push-tag:
+  stage:                    push
+  retry:                    2
+  tags:
+    - shell
+  before_script:
+    - docker login -u <<USER>> -p <<PASSWORD>> $CI_REGISTRY
+  script:
+    - export VERSION=$(git describe --tags | grep -oE 'v[0-9]*\.[0-9]*\.[0-9]*-?[0-9]*');
+    - docker tag $LOCAL_TAG $CI_REGISTRY/$CI_PROJECT_PATH:latest
+    - docker push $CI_REGISTRY/$CI_PROJECT_PATH:latest
+    - docker tag $LOCAL_TAG $CI_REGISTRY/$CI_PROJECT_PATH:${VERSION:-latest}
+    - docker push $CI_REGISTRY/$CI_PROJECT_PATH:${VERSION:-latest}
+  only:
+    - /^v[0-9]*\.[0-9]*\.[0-9]/
+  except:
+    - branches
+
+.deploy_template:           &deploy
+  stage:                    deploy
+  tags:
+    - release
+  except:
+    - triggers
+  when:                     manual
+  script:
+    - export VERSION=$(git describe --tags | grep -oE 'v[0-9]*\.[0-9]*\.[0-9]*-?[0-9]*')
+    - sed -i "s|<<IMAGE>>|$CI_REGISTRY/$CI_PROJECT_PATH:${VERSION:-latest}|g" kub/deploy.yml
+    - grep "image:" kub/deploy.yml | awk '{print $2}'
+    - kubectl apply -f kub/
+
+deploy:
+  <<:                       *deploy
+  variables:
+    KUBECONFIG:             /config/kube.conf
+  only:
+    - tags

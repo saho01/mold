@@ -1,0 +1,57 @@
+cache:
+  untracked: true
+variables:
+  DOCKER_DRIVER: overlay2
+  GO_BINARY: $CI_PROJECT_DIR/$CI_PROJECT_NAME
+  GIT_SSL_NO_VERIFY: '1'
+stages:
+  - test
+  - build
+  - package
+  - deploy
+before_script:
+  - mkdir -p $GOPATH/src/{{.Repo}}/$CI_PROJECT_PATH
+  - cd $GOPATH/src/{{.Repo}}/$CI_PROJECT_PATH
+  - cp -r $CI_PROJECT_DIR/* .
+  - pwd
+  - ls
+  - 'curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh'
+  - dep ensure
+unit_tests:
+  stage: test
+  image: 'golang:1.10'
+  tags:
+    - docker
+  script:
+    - go get -u github.com/mgechev/revive
+    - make test
+    - cp coverage.html $CI_PROJECT_DIR/coverage.html
+  artifacts:
+    name: $CI_PROJECT_NAME-coverage
+    paths:
+      - coverage.html
+  only:
+    - branches
+  except:
+    - master
+build-go-arm:
+  stage: build
+  image: 'golang:1.10'
+  tags:
+    - docker
+  variables:
+    CGO_ENABLED: '0'
+    GOBIN: /go/bin
+    GOARCH: arm
+    GOOS: linux
+  script:
+    - make
+    - ls
+    - cp -r $GOPATH/src/{{.Repo}}/$CI_PROJECT_PATH/bin $CI_PROJECT_DIR
+  artifacts:
+    name: $CI_PROJECT_NAME-arm
+    paths:
+      - bin/
+  only:
+    - master
+    - tags

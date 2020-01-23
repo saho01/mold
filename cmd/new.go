@@ -32,26 +32,29 @@ import (
 
 // newCmd represents the new command
 var (
-	ignore  bool
-	read_me bool
-	newCmd  = &cobra.Command{
+	ignore   bool
+	read_me  bool
+	makefile bool
+	ci       string
+	newCmd   = &cobra.Command{
 		Use:   "new",
 		Short: "Create new project structure",
 		Long:  `Create new projct structure. Will prompt for project name and location`,
 		Run: func(cmd *cobra.Command, args []string) {
-			location, err := parse.Location()
+			repo, name, err := parse.Location()
 			if err != nil {
 				fmt.Println(err)
 				os.Exit(1)
 			}
-			err = project.CreateDir(location)
+			p := project.NewProject(name, repo)
+			err = p.CreateDir()
 			if err != nil {
 				fmt.Println(err)
 				os.Exit(1)
 			}
 			if ignore {
 				fmt.Println("Adding gitignore")
-				err = project.CreateFile(location, ".gitignore")
+				err = p.CreateFile(".gitignore", "")
 				if err != nil {
 					fmt.Println(err)
 					os.Exit(1)
@@ -59,12 +62,44 @@ var (
 			}
 			if read_me {
 				fmt.Println("Adding README")
-				err = project.CreateFile(location, "README.md")
+				err = p.CreateFile("README.md", "")
 				if err != nil {
 					fmt.Println(err)
 					os.Exit(1)
 				}
 			}
+
+			if makefile {
+				fmt.Println("Adding Makefile")
+				err = p.ParseTemplate("Makefile")
+				if err != nil {
+					fmt.Println(err)
+					os.Exit(1)
+				}
+			}
+
+			switch ci {
+			case "":
+				fmt.Println("done nothing")
+				break
+			case "azure":
+				fmt.Println("Adding azure pipeline")
+				err = p.ParseTemplate(".azure-pipelines.yml")
+				if err != nil {
+					fmt.Println(err)
+					os.Exit(1)
+				}
+			case "gitlab":
+				fmt.Println("Adding azure pipeline")
+				err = p.ParseTemplate(".gitlab-ci.yml")
+				if err != nil {
+					fmt.Println(err)
+					os.Exit(1)
+				}
+			default:
+				fmt.Println("Unrecoginized ci. Ignoring")
+			}
+
 			fmt.Println("Done")
 		},
 	}
@@ -83,4 +118,6 @@ func init() {
 	// is called directly, e.g.:
 	newCmd.Flags().BoolVarP(&ignore, "ignore", "i", false, "Include gitignore")
 	newCmd.Flags().BoolVarP(&read_me, "me", "m", false, "Include readme")
+	newCmd.Flags().BoolVarP(&makefile, "make", "k", false, "Include Makefile")
+	newCmd.Flags().StringVarP(&ci, "ci", "g", "", "CI pipeline file to include [azure, gitlab]. Leave alone if not wanted")
 }

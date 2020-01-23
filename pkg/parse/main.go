@@ -6,7 +6,7 @@ import (
 	"github.com/manifoldco/promptui"
 )
 
-func Location() (string, error) {
+func Location() (string, string, error) {
 	fmt.Println("******************************************")
 
 	prompt := promptui.Prompt{
@@ -14,18 +14,17 @@ func Location() (string, error) {
 	}
 	project, err := prompt.Run()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	fmt.Printf("porject name :%s\n", project)
 
 	prompt = promptui.Prompt{
-		Label: "Enter dir",
+		Label: "Enter repo name",
 	}
-	dir, err := prompt.Run()
+	repo, err := prompt.Run()
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
 	fmt.Println("******************************************")
-	return fmt.Sprintf("%s/%s", dir, project), nil
+	return repo, project, nil
 
 }
